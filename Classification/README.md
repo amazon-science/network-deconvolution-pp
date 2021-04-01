@@ -19,8 +19,8 @@ python main_imagenet.py -a resnet50 -j 32 /home/ubuntu/efs/Data/imagenet >resnet
 
 2.  deconv++ resnet50:
 
-without normalization:    
-python -u main_imagenet.py -a resnet50d -j 128 /home/ubuntu/efs/Data/imagenet --deconv True  --dist-url 'tcp://127.0.0.1:6666' --dist-backend 'nccl' --multiprocessing-distributed --world-size 1 --rank 0 --sync True --batch-size 2048 --wd 5e-4 >resnet50d.b2048.wd5e-4.log
+without scale invariance:      
+python -u main_imagenet.py -a resnet50d -j 128 /home/ubuntu/efs/Data/imagenet --deconv True  --dist-url 'tcp://127.0.0.1:1234' --dist-backend 'nccl' --multiprocessing-distributed --world-size 1 --rank 0 --sync True --batch-size 2048 --wd 5e-4 >resnet50d.b2048.wd5e-4.log
 
-with normalization:    
-python -u main_imagenet.py -a resnet50d -j 128 /home/ubuntu/efs/Data/imagenet --deconv True  --dist-url 'tcp://127.0.0.1:6666' --dist-backend 'nccl' --multiprocessing-distributed --world-size 1 --rank 0 --sync True --norm-type layernorm --batch-size 2048 --wd 5e-4 >resnet50d.ln.b2048.wd5e-4.log
+with scale invariance:    
+python -u main_imagenet.py -a resnet50d -j 128 /home/ubuntu/efs/Data/imagenet --deconv True  --dist-url 'tcp://127.0.0.1:1234' --dist-backend 'nccl' --multiprocessing-distributed --world-size 1 --rank 0 --sync True --norm-type layernorm --batch-size 2048 --wd 5e-4 >resnet50d.ln.b2048.wd5e-4.log
