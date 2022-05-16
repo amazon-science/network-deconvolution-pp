@@ -17,6 +17,7 @@ import numpy as np
 import cv2
 
 
+
 class Delinear(nn.Module):
     __constants__ = ['bias', 'in_features', 'out_features']
 
@@ -132,16 +133,10 @@ class Delinear(nn.Module):
 class Deconv(conv._ConvNd):
 
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1,groups=1,bias=True, eps=1e-5, n_iter=5, momentum=0.1, block=64, sampling_stride=3,freeze=False,freeze_iter=100,sync=False,norm_type='none'):
-  
-        self.momentum = momentum
-        self.n_iter = n_iter
-        self.eps = eps
-        self.counter=0
         super(Deconv, self).__init__(
             in_channels, out_channels,  _pair(kernel_size), _pair(stride), _pair(padding), _pair(dilation),
             False, _pair(0), groups, bias, padding_mode='zeros')
-
-
+        
         if block > in_channels:
             block = in_channels
         else:
@@ -164,6 +159,10 @@ class Deconv(conv._ConvNd):
             self.register_buffer('running_mean', torch.zeros(kernel_size ** 2 * in_channels))
             self.register_buffer('running_cov_isqrt', torch.eye(self.num_features).repeat(in_channels // block, 1, 1))
 
+        self.momentum = momentum
+        self.n_iter = n_iter
+        self.eps = eps
+        self.counter=0
         self.sampling_stride=sampling_stride*stride
         self.counter=0
         self.freeze_iter=freeze_iter
@@ -214,15 +213,16 @@ class Deconv(conv._ConvNd):
                 X = X.view(-1, self.num_features, C // B).transpose(1, 2).contiguous().view(-1, self.num_features)
             else:
                 X=X.view(-1,X.shape[-1])
-
+                
             # 2. calculate mean,cov,cov_isqrt
             X_mean = X.mean(0)
 
+            M = X.shape[0]#number of pixels involved
+
             if self.groups==1:
-                M = X.shape[0]
                 XX_mean = X.t()@X/M 
             else:
-                M = X.shape[1]
+                X = X.view(-1, self.groups, self.num_features).transpose(0, 1)
                 XX_mean = X.transpose(1,2)@X/M 
                 
             if self.sync:
@@ -248,15 +248,17 @@ class Deconv(conv._ConvNd):
                 cov_isqrt = isqrt_newton_schulz_autograd(cov, self.n_iter)
             else:
                 Id = torch.eye(self.num_features, dtype=X.dtype, device=X.device).expand(self.groups, self.num_features, self.num_features)
-                cov= (XX_mean- (X_mean.unsqueeze(2)) @X_mean.unsqueeze(1))+self.eps*Id
+                X_mean_reshaped=X_mean.view(self.groups, self.num_features)                
+                cov= (XX_mean- (X_mean_reshaped.unsqueeze(2)) @X_mean_reshaped.unsqueeze(1))+self.eps*Id
                 cov_isqrt = isqrt_newton_schulz_autograd_batch(cov, self.n_iter)
+                
 
             # track stats for evaluation.
             self.running_mean.mul_(1 - self.momentum)                
             self.running_mean.add_(X_mean.detach() * self.momentum)
             self.running_cov_isqrt.mul_(1 - self.momentum)
             self.running_cov_isqrt.add_(cov_isqrt.detach() * self.momentum)
-
+            
         else:
             X_mean = self.running_mean
             cov_isqrt = self.running_cov_isqrt
@@ -486,7 +488,6 @@ def isqrt_newton_schulz_autograd_batch(A, numIters,method='inverse_newton'):
     return A_isqrt
 
 
-
 class LayerNorm(nn.Module):
     def __init__(self, eps=1e-4):
         super(LayerNorm, self).__init__()
@@ -494,7 +495,10 @@ class LayerNorm(nn.Module):
 
     def forward(self,x):
         x_shape=x.shape
-        x=x.reshape(x_shape[0],-1)
+        if len(x_shape)<=3:#linear layers
+            x=x.reshape(-1, x_shape[-1])
+        else:#conv layers
+            x=x.reshape(x_shape[0],-1)
         mean = x.mean(-1,keepdim=True)
         std = x.std(-1,keepdim=True)+ self.eps
         #x = (x - mean) / std #disaster
